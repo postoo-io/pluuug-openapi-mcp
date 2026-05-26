@@ -38,8 +38,35 @@ def _ensure_default_args(argv: List[str]) -> List[str]:
     return out
 
 
+def _patch_argparse_choices() -> None:
+    """Extend awslabs argparse ``--auth-type`` choices to accept ``pluuug_hmac``.
+
+    awslabs server.py defines ``--auth-type`` with a fixed ``choices`` list
+    (none, basic, bearer, api_key, cognito). argparse rejects any other value
+    with "invalid choice". We register a new auth type, so we have to teach
+    argparse about it before ``parse_args`` runs.
+    """
+    import argparse
+
+    _orig = argparse._ActionsContainer.add_argument  # type: ignore[attr-defined]
+
+    def _patched(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        flags = [a for a in args if isinstance(a, str) and a.startswith("--")]
+        if "--auth-type" in flags and "choices" in kwargs and kwargs["choices"]:
+            choices = list(kwargs["choices"])
+            if "pluuug_hmac" not in choices:
+                choices.append("pluuug_hmac")
+            kwargs["choices"] = choices
+        return _orig(self, *args, **kwargs)
+
+    argparse._ActionsContainer.add_argument = _patched  # type: ignore[attr-defined]
+
+
 def main() -> None:
     """Entry point for ``pluuug-openapi-mcp`` console script."""
+    # 0. Extend awslabs argparse choices before its parser is constructed.
+    _patch_argparse_choices()
+
     # 1. Register pluuug HMAC auth provider with awslabs' factory before
     # awslabs.openapi_mcp_server.server.main consults the registry.
     register_with_awslabs()

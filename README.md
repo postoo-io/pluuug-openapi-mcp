@@ -35,27 +35,25 @@ uvx --from "git+https://github.com/postoo-io/pluuug-openapi-mcp.git" pluuug-open
         "--from",
         "git+https://github.com/postoo-io/pluuug-openapi-mcp.git",
         "pluuug-openapi-mcp"
-      ]
+      ],
+      "env": {
+        "PLUUUG_API_KEY": "<발급받은 API Key>",
+        "PLUUUG_SECRET_KEY": "<발급받은 Secret Key>"
+      }
     }
   }
 }
 ```
 
-API Key와 Secret Key는 OS 환경변수로 주입한다:
+API Key와 Secret Key는 위 `env` 블록에 **직접** 넣는다.
 
-```bash
-# macOS — GUI 앱에서 보이도록 launchctl 사용
-launchctl setenv PLUUUG_API_KEY "<발급받은 API Key>"
-launchctl setenv PLUUUG_SECRET_KEY "<발급받은 Secret Key>"
-
-# Windows (PowerShell, 영구)
-[Environment]::SetEnvironmentVariable("PLUUUG_API_KEY", "<API Key>", "User")
-[Environment]::SetEnvironmentVariable("PLUUUG_SECRET_KEY", "<Secret Key>", "User")
-
-# Linux — ~/.profile에 export 추가
-export PLUUUG_API_KEY="<API Key>"
-export PLUUUG_SECRET_KEY="<Secret Key>"
-```
+> ⚠️ **OS 환경변수(`launchctl setenv` / `export` / Windows 사용자 변수)로는 안 된다.**
+> Claude Desktop은 MCP 서버 서브프로세스의 환경을 자체 구성하므로 OS 환경변수가
+> 전달되지 않는다(서버 로그에 `PLUUUG_API_KEY env var not set` → 호출 403/401).
+> `claude_desktop_config.json`의 `env` 블록만 안정적으로 전달된다.
+>
+> **보안:** `env` 블록은 secret을 config 파일에 평문으로 저장한다. 파일 권한(chmod 600)·
+> 백업·스크린샷 유출에 주의한다.
 
 설정 변경 후 Claude Desktop을 **완전히 종료(트레이 포함) 후 재시작**한다.
 
@@ -98,8 +96,8 @@ pluuug 백엔드는 두 헤더를 모두 요구한다:
 | 모든 호출 403 (signature mismatch) | `PLUUUG_SECRET_KEY` 누락/오기재 | env 확인 |
 | 403 PLAN_PERMISSION_DENIED | 플랜 제약 (project/worker/member) | 해당 플랜으로 업그레이드 |
 | 429 Too Many Requests | throttle 1000/min 초과 | 호출 빈도 조정 |
-| 환경변수가 GUI 앱에 안 보임 (macOS) | `~/.zshrc` 미적용 | `launchctl setenv` 또는 터미널에서 `open -a Claude` 사용 |
-| Secret Key 분실 | 정책상 발급 시점 1회만 노출 | 새 API Key 재발급 + 환경변수 갱신 + Claude Desktop 재시작 |
+| 자격증명이 MCP 서버에 안 보임 (401/403) | OS env가 Claude Desktop 서브프로세스에 미전달 | `claude_desktop_config.json`의 `env` 블록에 키 직접 주입 후 완전 재시작 |
+| Secret Key 분실 | 정책상 발급 시점 1회만 노출 | 새 API Key 재발급 + `env` 블록 값 갱신 + Claude Desktop 재시작 |
 | MCP 서버 startup fail (pydantic enum error) | fastmcp 3.x 호환 깨짐 | 이 패키지가 자동으로 `fastmcp<3.0.0` 핀 — 별도 처리 불필요 |
 
 ## 라이선스

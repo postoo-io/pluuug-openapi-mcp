@@ -23,8 +23,8 @@ from .auth import register_with_awslabs
 # of these by passing the flag explicitly on the command line.
 DEFAULT_ARGS: dict[str, str] = {
     "--api-name": "pluuug",
-    "--api-url": "https://openapi.pluuug.com",
-    "--spec-url": "https://openapi.pluuug.com/openapi.json/",
+    "--api-url": "https://openapi-dev.pluuug.com",
+    "--spec-url": "https://openapi-dev.pluuug.com/openapi.json/",
     "--auth-type": "pluuug_hmac",
 }
 

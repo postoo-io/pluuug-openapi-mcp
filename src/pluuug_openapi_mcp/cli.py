@@ -19,12 +19,19 @@ from typing import List
 
 from .auth import register_with_awslabs
 
-# Default values matching pluuug production deployment. Users can override any
-# of these by passing the flag explicitly on the command line.
+_BASE_URL = (
+    "https://openapi-dev.pluuug.com"
+    if os.environ.get("PLUUUG_ENV") == "dev"
+    else "https://openapi.pluuug.com"
+)
+
+# Default values matching pluuug deployment. Users can override any of these
+# by passing the flag explicitly on the command line, or set PLUUUG_ENV=dev
+# to point at the dev server.
 DEFAULT_ARGS: dict[str, str] = {
     "--api-name": "pluuug",
-    "--api-url": "https://openapi.pluuug.com",
-    "--spec-url": "https://openapi.pluuug.com/openapi.json/",
+    "--api-url": _BASE_URL,
+    "--spec-url": f"{_BASE_URL}/openapi.json/",
     "--auth-type": "pluuug_hmac",
 }
 

@@ -62,10 +62,38 @@ def _patch_argparse_choices() -> None:
     argparse._ActionsContainer.add_argument = _patched  # type: ignore[attr-defined]
 
 
+def _patch_disable_output_schema() -> None:
+    """Workaround: strip outputSchema from all generated MCP tools.
+
+    Claude Desktop rejects tool responses for tools that declare ``outputSchema``
+    (treats them as "Tool execution failed" even when the wire response is valid
+    and ``structuredContent`` is included). By neutralizing the OpenAPI →
+    outputSchema extractor we make fastmcp register tools without an
+    outputSchema, the MCP SDK then skips its strict outputSchema validation, and
+    Claude Desktop processes the JSON text content successfully.
+
+    Must be called before awslabs ``server.main`` constructs ``FastMCPOpenAPI``,
+    so the extractor lookup at tool-registration time returns ``None``.
+    """
+    import fastmcp.experimental.utilities.openapi as _openapi_utils
+    import fastmcp.server.openapi.server as _openapi_server
+
+    def _noop(*args, **kwargs):  # type: ignore[no-untyped-def]
+        return None
+
+    _openapi_utils.extract_output_schema_from_responses = _noop
+    # ``server.py``가 이미 ``from ... import extract_output_schema_from_responses``로
+    # 끌어다 쓴 local reference도 교체 — Python import 의미상 같은 함수 객체가 아닌
+    # module-local name이라 별도로 덮어써야 한다.
+    _openapi_server.extract_output_schema_from_responses = _noop
+
+
 def main() -> None:
     """Entry point for ``pluuug-openapi-mcp`` console script."""
     # 0. Extend awslabs argparse choices before its parser is constructed.
     _patch_argparse_choices()
+    # 0b. Disable outputSchema generation for Claude Desktop compatibility.
+    _patch_disable_output_schema()
 
     # 1. Register pluuug HMAC auth provider with awslabs' factory before
     # awslabs.openapi_mcp_server.server.main consults the registry.

@@ -68,9 +68,19 @@ if [ ! -d "/Applications/Claude.app" ]; then
 fi
 ok "Claude Desktop 확인"
 
-# python3 (config 병합용) — macOS 14+ 기본 제공
-command -v python3 >/dev/null 2>&1 || fail "python3가 PATH에 없습니다. Command Line Tools를 설치하세요: xcode-select --install"
+# python3 + git (config 병합 + wrapper fetch에 필요)
+# macOS는 python3/git의 stub이 PATH에 있어도 실제 호출 시 Command Line Tools(CLT) 설치
+# 다이얼로그가 뜨면서 stub이 비정상 종료되어 스크립트가 abort된다. command -v는 통과하므로
+# 반드시 실제 코드 실행으로 검증한다.
+if ! python3 -c "import json" >/dev/null 2>&1 || ! git --version >/dev/null 2>&1; then
+  warn "macOS Command Line Tools가 필요합니다 (python3/git 사용)."
+  info "잠시 후 macOS가 설치 다이얼로그를 띄웁니다 — '설치'를 눌러주세요."
+  xcode-select --install >/dev/null 2>&1 || true
+  fail "CLT 설치 완료(수 분 소요) 후 다시 실행:
+       curl -fsSL https://raw.githubusercontent.com/postoo-io/pluuug-openapi-mcp/main/scripts/install.sh | bash"
+fi
 ok "python3 확인 ($(python3 --version 2>&1))"
+ok "git 확인 ($(git --version 2>&1))"
 
 # ── [2/6] uv ─────────────────────────────────────────────────────────────────
 step 2 "uv 확인"
@@ -125,10 +135,19 @@ print("exists" if os.environ["SERVER"] in servers else "absent")
 PY
 )
 
-if [ "$EXISTS" = "invalid" ]; then
-  fail "기존 config가 유효한 JSON이 아닙니다: $CFG
-       먼저 수동 정리하거나 백업 후 삭제하세요."
-fi
+case "$EXISTS" in
+  invalid)
+    fail "기존 config가 유효한 JSON이 아닙니다: $CFG
+         먼저 수동 정리하거나 백업 후 삭제하세요."
+    ;;
+  no_file|absent|exists) ;;
+  *)
+    # python3 호출이 비정상 종료(CLT 다이얼로그 등)되어 EXISTS가 비어있거나 예상 외 값.
+    # [1/6]의 실 실행 검증으로 거의 잡히지만 race 대비 default.
+    fail "config 상태 확인 실패 (응답: '$EXISTS')
+         python3가 정상 동작하는지 확인 후 다시 시도하세요."
+    ;;
+esac
 
 if [ "$EXISTS" = "exists" ]; then
   warn "이미 '$SERVER_NAME' 서버가 등록돼 있습니다."

@@ -96,6 +96,16 @@ else
   ok "uv 설치 완료 ($(uv --version 2>&1 | head -1))"
 fi
 
+# uvx 절대 경로 확정 — Claude Desktop(GUI 앱)은 launchd 환경이라 사용자 셸 PATH가 안 잡힌다.
+# config의 "command" 필드에 "uvx"만 박으면 GUI 환경에서 "command not found"로 실패한다.
+# 절대 경로를 박아두면 PATH와 무관하게 안정 동작.
+UVX_PATH=$(command -v uvx 2>/dev/null) || fail "uvx를 찾을 수 없습니다 (uv 설치는 됐는데 uvx 누락?)."
+case "$UVX_PATH" in
+  /*) ;;
+  *) UVX_PATH="$(cd "$(dirname "$UVX_PATH")" && pwd)/$(basename "$UVX_PATH")" ;;
+esac
+ok "uvx 절대 경로: $UVX_PATH"
+
 # ── [3/6] 키 입력 ────────────────────────────────────────────────────────────
 step 3 "API Key 입력"
 info "pluuug 어드민에서 발급받은 키 2개를 입력하세요."
@@ -166,14 +176,14 @@ if [ -f "$CFG" ]; then
 fi
 
 # JSON 안전 병합 (다른 MCP 서버는 보존)
-API_KEY="$API_KEY" SECRET_KEY="$SECRET_KEY" REPO_URL="$REPO_URL" SERVER="$SERVER_NAME" CFG="$CFG" python3 <<'PY'
+API_KEY="$API_KEY" SECRET_KEY="$SECRET_KEY" REPO_URL="$REPO_URL" SERVER="$SERVER_NAME" CFG="$CFG" UVX_PATH="$UVX_PATH" python3 <<'PY'
 import json, os, pathlib
 p = pathlib.Path(os.environ["CFG"])
 d = json.loads(p.read_text()) if p.exists() else {}
 if not isinstance(d.get("mcpServers"), dict):
     d["mcpServers"] = {}
 d["mcpServers"][os.environ["SERVER"]] = {
-    "command": "uvx",
+    "command": os.environ["UVX_PATH"],
     "args": ["--from", os.environ["REPO_URL"], "pluuug-openapi-mcp"],
     "env": {
         "PLUUUG_API_KEY":    os.environ["API_KEY"],

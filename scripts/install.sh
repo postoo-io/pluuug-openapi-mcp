@@ -59,12 +59,7 @@ printf "${DIM}Claude Desktop에 pluuug MCP 서버를 등록합니다.${RESET}\n"
 
 # ── [1/6] OS + Claude Desktop ────────────────────────────────────────────────
 step 1 "환경 점검"
-if [ "$(uname)" != "Darwin" ]; then
-  fail "이 스크립트는 macOS 전용입니다.
-       Windows는 PowerShell에서 다음 명령을 사용하세요:
-       irm https://raw.githubusercontent.com/postoo-io/pluuug-openapi-mcp/main/scripts/install.ps1 | iex
-       Linux는 추후 지원 예정 (Manual install: https://docs.openapi.pluuug.com/integrations/mcp)."
-fi
+[ "$(uname)" = "Darwin" ] || fail "현재 macOS만 지원합니다. Windows/Linux는 추후 지원 예정."
 ok "macOS 확인"
 
 if [ ! -d "/Applications/Claude.app" ]; then

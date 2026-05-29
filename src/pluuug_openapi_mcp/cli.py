@@ -19,20 +19,13 @@ from typing import List
 
 from .auth import register_with_awslabs
 
-# 기본 서버: prod. `PLUUUG_ENV=dev` 환경변수가 설정되면 dev 서버로 자동 전환.
-# 명시 args(`--api-url`/`--spec-url`)는 항상 env보다 우선.
-_BASE_URL = (
-    "https://openapi-dev.pluuug.com"
-    if os.environ.get("PLUUUG_ENV") == "dev"
-    else "https://openapi.pluuug.com"
-)
-
-# Default values matching pluuug deployment. Users can override any of these by
-# passing the flag explicitly on the command line.
+# Default values matching pluuug production deployment. Users can override any
+# of these by passing the flag explicitly on the command line (e.g. staging,
+# self-hosted, or local-dev backends).
 DEFAULT_ARGS: dict[str, str] = {
     "--api-name": "pluuug",
-    "--api-url": _BASE_URL,
-    "--spec-url": f"{_BASE_URL}/openapi.json/",
+    "--api-url": "https://openapi.pluuug.com",
+    "--spec-url": "https://openapi.pluuug.com/openapi.json/",
     "--auth-type": "pluuug_hmac",
 }
 

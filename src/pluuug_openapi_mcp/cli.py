@@ -89,12 +89,78 @@ def _patch_disable_output_schema() -> None:
     _openapi_server.extract_output_schema_from_responses = _noop
 
 
+def _patch_coerce_stringified_args() -> None:
+    """Workaround: revive nested object/array args that the client sent as a JSON string.
+
+    일부 MCP 클라이언트(LLM)는 ``client``/``status``/``fieldSet`` 같은 nested
+    object·array 파라미터를 구조(dict/list)가 아니라 **JSON 문자열**로 직렬화해
+    보낸다 (예: ``status="{\\"id\\": 31442}"``). fastmcp ``RequestDirector``는 받은
+    값을 그대로 application/json 본문에 실으므로, 백엔드의 중첩 직렬화기가 dict/list
+    자리에서 str을 받아 400("딕셔너리/리스트 대신 str")으로 거부한다. 간헐적이라
+    클라이언트가 통제하기 어렵다.
+
+    ``RequestDirector.build``를 감싸, 각 인자의 **선언 타입이 object/array인 경우에
+    한해**(``route.flat_param_schema`` 기준) str 값을 ``json.loads``로 복원한다.
+    스칼라(string 등) 필드는 건드리지 않으므로, 값이 우연히 JSON처럼 보이는 일반
+    문자열은 그대로 보존된다.
+
+    Must be called before awslabs ``server.main`` constructs ``FastMCPOpenAPI``.
+    """
+    import json
+
+    from fastmcp.utilities.openapi.director import RequestDirector
+
+    _orig_build = RequestDirector.build
+
+    def _expects_structured(schema, defs, depth: int = 0) -> bool:
+        """schema가 object/array(또는 그 ref/조합)를 기대하는지 판별."""
+        if not isinstance(schema, dict) or depth > 12:
+            return False
+        type_ = schema.get("type")
+        if isinstance(type_, str) and type_ in ("object", "array"):
+            return True
+        if isinstance(type_, list) and ("object" in type_ or "array" in type_):
+            return True
+        if "properties" in schema or "items" in schema:
+            return True
+        ref = schema.get("$ref")
+        if isinstance(ref, str) and "/" in ref:
+            return _expects_structured(defs.get(ref.rsplit("/", 1)[-1], {}), defs, depth + 1)
+        for combiner in ("oneOf", "anyOf", "allOf"):
+            for branch in schema.get(combiner) or []:
+                if _expects_structured(branch, defs, depth + 1):
+                    return True
+        return False
+
+    def _patched_build(self, route, flat_args, base_url="http://localhost"):  # type: ignore[no-untyped-def]
+        schema = getattr(route, "flat_param_schema", None)
+        if isinstance(schema, dict) and isinstance(flat_args, dict):
+            props = schema.get("properties", {})
+            defs = schema.get("$defs", {})
+            coerced = {}
+            for name, value in flat_args.items():
+                if isinstance(value, str) and _expects_structured(props.get(name), defs):
+                    try:
+                        parsed = json.loads(value)
+                    except (ValueError, TypeError):
+                        parsed = value
+                    coerced[name] = parsed if isinstance(parsed, (dict, list)) else value
+                else:
+                    coerced[name] = value
+            flat_args = coerced
+        return _orig_build(self, route, flat_args, base_url)
+
+    RequestDirector.build = _patched_build
+
+
 def main() -> None:
     """Entry point for ``pluuug-openapi-mcp`` console script."""
     # 0. Extend awslabs argparse choices before its parser is constructed.
     _patch_argparse_choices()
     # 0b. Disable outputSchema generation for Claude Desktop compatibility.
     _patch_disable_output_schema()
+    # 0c. Revive nested object/array args sent as JSON strings by some clients.
+    _patch_coerce_stringified_args()
 
     # 1. Register pluuug HMAC auth provider with awslabs' factory before
     # awslabs.openapi_mcp_server.server.main consults the registry.

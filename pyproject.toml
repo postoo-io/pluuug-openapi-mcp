@@ -1,7 +1,7 @@
 [project]
 name = "pluuug-openapi-mcp"
-version = "0.1.0"
-description = "MCP server for pluuug openapi (with HMAC body signing built-in)."
+version = "0.2.0"
+description = "MCP server for pluuug openapi."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

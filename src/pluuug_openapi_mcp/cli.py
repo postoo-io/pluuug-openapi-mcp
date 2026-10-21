@@ -2,13 +2,14 @@
 
 Wraps ``awslabs.openapi-mcp-server`` by:
 
-1. Registering :class:`PluuugHMACAuthProvider` as awslabs auth type ``pluuug_hmac``.
-2. Pre-filling sensible defaults for pluuug (spec URL, API URL, auth type).
+1. Pre-filling sensible defaults for pluuug (spec URL, API URL, ``X-API-Key``
+   header auth via awslabs' built-in ``api_key`` auth type).
+2. Passing ``PLUUUG_API_KEY`` to awslabs as ``AUTH_API_KEY``.
 3. Delegating to ``awslabs.openapi_mcp_server.server.main`` for actual startup.
 
 Customers run via ``uvx pluuug-openapi-mcp@latest`` from their Claude Desktop /
-MCP client config; credentials are picked up from ``PLUUUG_API_KEY`` and
-``PLUUUG_SECRET_KEY`` environment variables.
+MCP client config; the credential is picked up from the ``PLUUUG_API_KEY``
+environment variable.
 """
 
 from __future__ import annotations
@@ -17,8 +18,6 @@ import os
 import sys
 from typing import List
 
-from .auth import register_with_awslabs
-
 # Default values matching pluuug production deployment. Users can override any
 # of these by passing the flag explicitly on the command line (e.g. staging,
 # self-hosted, or local-dev backends).
@@ -26,7 +25,9 @@ DEFAULT_ARGS: dict[str, str] = {
     "--api-name": "pluuug",
     "--api-url": "https://openapi.pluuug.com",
     "--spec-url": "https://openapi.pluuug.com/openapi.json/",
-    "--auth-type": "pluuug_hmac",
+    "--auth-type": "api_key",
+    "--auth-api-key-name": "X-API-Key",
+    "--auth-api-key-in": "header",
 }
 
 
@@ -39,28 +40,15 @@ def _ensure_default_args(argv: List[str]) -> List[str]:
     return out
 
 
-def _patch_argparse_choices() -> None:
-    """Extend awslabs argparse ``--auth-type`` choices to accept ``pluuug_hmac``.
+def _apply_api_key_env() -> None:
+    """Pass ``PLUUUG_API_KEY`` to awslabs as ``AUTH_API_KEY`` (env, not argv).
 
-    awslabs server.py defines ``--auth-type`` with a fixed ``choices`` list
-    (none, basic, bearer, api_key, cognito). argparse rejects any other value
-    with "invalid choice". We register a new auth type, so we have to teach
-    argparse about it before ``parse_args`` runs.
+    argv would expose the key in the process list. An explicit ``AUTH_API_KEY``
+    wins so advanced users can still use awslabs' own variable.
     """
-    import argparse
-
-    _orig = argparse._ActionsContainer.add_argument  # type: ignore[attr-defined]
-
-    def _patched(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-        flags = [a for a in args if isinstance(a, str) and a.startswith("--")]
-        if "--auth-type" in flags and "choices" in kwargs and kwargs["choices"]:
-            choices = list(kwargs["choices"])
-            if "pluuug_hmac" not in choices:
-                choices.append("pluuug_hmac")
-            kwargs["choices"] = choices
-        return _orig(self, *args, **kwargs)
-
-    argparse._ActionsContainer.add_argument = _patched  # type: ignore[attr-defined]
+    api_key = os.environ.get("PLUUUG_API_KEY")
+    if api_key and not os.environ.get("AUTH_API_KEY"):
+        os.environ["AUTH_API_KEY"] = api_key
 
 
 def _patch_disable_output_schema() -> None:
@@ -155,31 +143,23 @@ def _patch_coerce_stringified_args() -> None:
 
 def main() -> None:
     """Entry point for ``pluuug-openapi-mcp`` console script."""
-    # 0. Extend awslabs argparse choices before its parser is constructed.
-    _patch_argparse_choices()
-    # 0b. Disable outputSchema generation for Claude Desktop compatibility.
+    # 0. Disable outputSchema generation for Claude Desktop compatibility.
     _patch_disable_output_schema()
-    # 0c. Revive nested object/array args sent as JSON strings by some clients.
+
+    # 0b. Revive nested object/array args sent as JSON strings by some clients.
     _patch_coerce_stringified_args()
 
-    # 1. Register pluuug HMAC auth provider with awslabs' factory before
-    # awslabs.openapi_mcp_server.server.main consults the registry.
-    register_with_awslabs()
+    # 1. Hand the pluuug API key to awslabs' built-in api_key auth.
+    _apply_api_key_env()
 
     # 2. Patch sys.argv so awslabs argparse picks up pluuug defaults.
     sys.argv = [sys.argv[0]] + _ensure_default_args(sys.argv[1:])
 
-    # 3. Surface credential warnings early — easier to diagnose than 401.
-    if not os.environ.get("PLUUUG_API_KEY"):
+    # 3. Surface credential warnings early — easier to diagnose than 403.
+    if not os.environ.get("AUTH_API_KEY"):
         print(
             "[pluuug-openapi-mcp] WARN: PLUUUG_API_KEY env var not set; "
-            "MCP tools will be visible but API calls will fail (401).",
-            file=sys.stderr,
-        )
-    if not os.environ.get("PLUUUG_SECRET_KEY"):
-        print(
-            "[pluuug-openapi-mcp] WARN: PLUUUG_SECRET_KEY env var not set; "
-            "X-Signature cannot be computed, API calls will fail (403).",
+            "MCP tools will be visible but API calls will fail (403).",
             file=sys.stderr,
         )
 

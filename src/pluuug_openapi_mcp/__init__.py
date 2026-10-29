@@ -1,7 +1,7 @@
-"""pluuug-openapi-mcp — MCP server for pluuug openapi with HMAC body signing.
+"""pluuug-openapi-mcp — MCP server for pluuug openapi.
 
-Wrapper around awslabs/openapi-mcp-server that injects pluuug's required
-X-API-Key + X-Signature (HMAC-SHA256 of request body) auth headers.
+Wrapper around awslabs/openapi-mcp-server that sends pluuug's ``X-API-Key``
+header and patches client-compatibility issues (outputSchema, stringified args).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

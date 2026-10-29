@@ -5,7 +5,7 @@
 # 이 스크립트는 다음 작업을 자동으로 수행합니다:
 #   1. macOS / Claude Desktop 설치 여부 확인
 #   2. uv 자동 설치 (이미 있으면 건너뜀)
-#   3. PLUUUG_API_KEY / PLUUUG_SECRET_KEY 대화형 입력
+#   3. PLUUUG_API_KEY 대화형 입력
 #   4. ~/Library/Application Support/Claude/claude_desktop_config.json 백업 + 'pluuug' 서버 등록
 #   5. wrapper 받아오기 + 동작 검증
 #   6. Claude Desktop 재기동 안내 (수동)
@@ -98,8 +98,8 @@ fi
 
 # ── [3/6] 키 입력 ────────────────────────────────────────────────────────────
 step 3 "API Key 입력"
-info "pluuug 어드민에서 발급받은 키 2개를 입력하세요."
-info "Secret Key는 보안상 입력이 화면에 표시되지 않습니다."
+info "플러그 설정 화면에서 발급받은 API Key를 입력하세요."
+info "API Key는 보안상 붙여넣어도 화면에 표시되지 않습니다."
 
 # stdin이 파이프(curl|bash)일 수 있어 /dev/tty에서 직접 읽음
 if [ ! -r /dev/tty ]; then
@@ -108,12 +108,9 @@ if [ ! -r /dev/tty ]; then
        2) bash install.sh"
 fi
 
-read -r -p "  PLUUUG_API_KEY: " API_KEY < /dev/tty || fail "키 입력이 취소되었습니다."
-[ -n "${API_KEY:-}" ] || fail "API Key가 비어있습니다."
-
-read -r -s -p "  PLUUUG_SECRET_KEY (입력 안 보임): " SECRET_KEY < /dev/tty || fail "키 입력이 취소되었습니다."
+read -r -s -p "  PLUUUG_API_KEY (입력 안 보임): " API_KEY < /dev/tty || fail "키 입력이 취소되었습니다."
 echo
-[ -n "${SECRET_KEY:-}" ] || fail "Secret Key가 비어있습니다."
+[ -n "${API_KEY:-}" ] || fail "API Key가 비어있습니다."
 ok "키 입력 완료"
 
 # ── [4/6] config 백업 + 병합 ─────────────────────────────────────────────────
@@ -166,7 +163,7 @@ if [ -f "$CFG" ]; then
 fi
 
 # JSON 안전 병합 (다른 MCP 서버는 보존)
-API_KEY="$API_KEY" SECRET_KEY="$SECRET_KEY" REPO_URL="$REPO_URL" SERVER="$SERVER_NAME" CFG="$CFG" python3 <<'PY'
+API_KEY="$API_KEY" REPO_URL="$REPO_URL" SERVER="$SERVER_NAME" CFG="$CFG" python3 <<'PY'
 import json, os, pathlib
 p = pathlib.Path(os.environ["CFG"])
 d = json.loads(p.read_text()) if p.exists() else {}
@@ -176,8 +173,7 @@ d["mcpServers"][os.environ["SERVER"]] = {
     "command": "uvx",
     "args": ["--from", os.environ["REPO_URL"], "pluuug-openapi-mcp"],
     "env": {
-        "PLUUUG_API_KEY":    os.environ["API_KEY"],
-        "PLUUUG_SECRET_KEY": os.environ["SECRET_KEY"],
+        "PLUUUG_API_KEY": os.environ["API_KEY"],
     },
 }
 p.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n")
